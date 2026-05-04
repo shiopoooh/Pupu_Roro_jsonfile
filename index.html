@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Unity Map Editor V3.2 (Final Path Update)</title>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --panel-color: #34495e;
+            --text-color: #ecf0f1;
+            --accent-color: #3498db;
+        }
+        body { font-family: sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        header { background: #1a252f; padding: 10px 20px; display: flex; gap: 20px; align-items: center; border-bottom: 2px solid #000; }
+        
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* サイドパネル */
+        .side-panel { width: 320px; padding: 15px; background: var(--panel-color); overflow-y: auto; border-right: 1px solid #1a252f; border-left: 1px solid #1a252f; }
+        .section-title { font-weight: bold; margin: 15px 0 5px; border-bottom: 1px solid #5d6d7e; padding-bottom: 3px; color: #f1c40f; }
+        
+        /* マップエリア */
+        .map-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #222; overflow: auto; position: relative; }
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(14, 45px); 
+            grid-template-rows: repeat(10, 45px);
+            gap: 1px; 
+            background: #444; 
+            border: 2px solid #000; 
+        }
+        .cell { width: 45px; height: 45px; background: #666; position: relative; cursor: pointer; display: flex; align-items: center; justify-content: center; overflow: hidden; background-size: cover; background-position: center; }
+        .cell:hover { outline: 2px solid rgba(218, 120, 172, 0.313); z-index: 10; }
+        
+        /* オーバーレイ */
+        .cell-overlay { position: absolute; top:0; left:0; width: 100%; height: 100%; pointer-events: none; opacity: 0.5; z-index: 5; }
+        .cell-label { position: absolute; bottom: 0; width: 100%; text-align: center; background: rgba(0,0,0,0.6); font-size: 7px; pointer-events: none; z-index: 6; }
+
+        /* アイテムスロット表示 */
+        .item-icons { position: absolute; display: grid; grid-template-columns: 1fr 1fr; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
+        .item-mini { width: 100%; height: 100%; background-size: contain; background-repeat: no-repeat; background-position: center; }
+
+        /* パレット */
+        .palette-container { margin-bottom: 20px; }
+        .palette { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 10px; }
+        .p-item { padding: 4px; background: #5d6d7e; cursor: pointer; font-size: 9px; border-radius: 3px; border: 1px solid transparent; text-align: center; word-break: break-all; }
+        .p-item:hover { background: #7f8c8d; }
+        .p-item.active { border-color: #f1c40f; background: #f39c12; }
+        .p-thumb { width: 100%; height: 30px; background-size: contain; background-repeat: no-repeat; background-position: center; margin-bottom: 2px; background-color: rgba(0,0,0,0.2); }
+
+        .layer-switch { background: #1a252f; padding: 10px; border-radius: 5px; margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px; }
+
+        .hidden { display: none !important; }
+
+        input, select, button { background: #2c3e50; color: white; border: 1px solid #7f8c8d; padding: 3px; width: 100%; box-sizing: border-box; }
+        button { cursor: pointer; background: #27ae60; font-weight: bold; border: none; padding: 8px; margin-top: 10px; }
+        button:hover { background: #2ecc71; }
+        .check-group { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; font-size: 11px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div>Ver: <input type="number" id="ver" value="1" style="width:50px;" onchange="updateAll()"></div>
+    <div style="flex:1">Title: <input type="text" id="mapTitle" onchange="updateAll()"></div>
+    <div style="flex:1">Hint: <input type="text" id="mapHint" onchange="updateAll()"></div>
+</header>
+
+<div class="main-container">
+    <div class="side-panel">
+        <div class="section-title">Character Layer</div>
+        <div class="layer-switch">
+            <label><input type="radio" name="charLayer" value="pupu" checked onchange="toggleCharSettings()"> Pupu Settings</label>
+            <label><input type="radio" name="charLayer" value="roro" onchange="toggleCharSettings()"> Roro Settings</label>
+        </div>
+
+        <div id="pupuSettings">
+            <label><input type="checkbox" id="pupu_right" onchange="updateAll()"> Pupu Right</label>
+            <div class="section-title">Use Commands (Pupu)</div>
+            <div id="useCommandsPupu" class="check-group"></div>
+            <div class="section-title">Initial Commands (Pupu)</div>
+            <div id="initCommandsPupu"></div>
+        </div>
+
+        <div id="roroSettings" class="hidden">
+            <label><input type="checkbox" id="roro_Right" onchange="updateAll()"> Roro Right</label>
+            <div class="section-title">Use Commands (Roro)</div>
+            <div id="useCommandsRoro" class="check-group"></div>
+            <div class="section-title">Initial Commands (Roro)</div>
+            <div id="initCommandsRoro"></div>
+        </div>
+    </div>
+
+    <div class="map-area">
+        <div id="grid" class="grid"></div>
+        <div style="margin-top:20px; display:flex; gap:10px;">
+            <button onclick="downloadJSON()">JSON保存</button>
+            <button onclick="document.getElementById('fileInput').click()" style="background:#8e44ad">JSON読み込み</button>
+            <input type="file" id="fileInput" style="display:none" onchange="loadJSON(event)">
+        </div>
+    </div>
+
+    <div class="side-panel">
+        <div class="section-title">Editor Layer</div>
+        <div class="layer-switch">
+            <label><input type="radio" name="layer" value="map" checked onchange="togglePalettes()"> Map Layer</label>
+            <label><input type="radio" name="layer" value="item" onchange="togglePalettes()"> Item Layer</label>
+        </div>
+
+        <div id="mapPaletteSection" class="palette-container">
+            <div class="section-title">Map Palette</div>
+            <div id="mapPalette" class="palette"></div>
+        </div>
+
+        <div id="itemPaletteSection" class="palette-container hidden">
+            <div class="section-title">Item Group</div>
+            <div id="itemPalette" class="palette"></div>
+            <div class="section-title">Boss Group</div>
+            <div id="bossPalette" class="palette"></div>
+            <div class="section-title">Enemy Group</div>
+            <div id="enemyPalette" class="palette"></div>
+        </div>
+
+        <div class="section-title">Common Settings</div>
+        <div class="section-title">Enemy Commands</div>
+        <div id="enemyConfigs"></div>
+        <div class="section-title">Gold Snake</div>
+        ItemNum: <input type="number" id="goldSnakeItemNum" value="0" onchange="updateAll()">
+    </div>
+</div>
+
+<script>
+    const COLS = 14;
+    const ROWS = 10;
+    const COMMAND_TYPES = ["none", "Wait", "MoveLeft", "MoveUp", "MoveDown", "MoveRight", "Put", "PickUp", "Bark", "Change"];
+
+    const HIDDEN_LIST = [
+      "Rail_DL","Rail_DR","Rail_LR","Rail_UD","Rail_UL","Rail_UR",
+      "RailBlue_DL","RailBlue_DR","RailBlue_LR","RailBlue_UD","RailBlue_UL","RailBlue_UR",
+      "RailGreen_DL","RailGreen_DR","RailGreen_LR","RailGreen_UD","RailGreen_UL","RailGreen_UR",
+      "RailRed_DL","RailRed_DR","RailRed_LR","RailRed_UD","RailRed_UL","RailRed_UR",
+      "RailSWBlue_LR","RailSWBlue_UD","RailSWGreen_LR","RailSWGreen_UD","RailSwRed_LR","RailSwRed_UD"
+    ];
+
+    const ENEMY_LABELS = {
+        1: "１ヘビ",
+        2: "２カラス",
+        3: "３金蛇",
+        4: "４白カラス"
+    };
+
+    const MAP_SPRITES = ["Apple_LR", "Apple_UD", "Apple_UDLR", "BridgeAL_LR", "BridgeAR_LR", "BridgeBL_R", "BridgeBR_L", "CaveA_UD", "CaveB_D", "DeadEnd_LR", "DeadEnd_UD", "Empty1", "Empty2", "Empty3", "Empty4", "Goal_LR", "Goal_UD", "Road_DL", "Road_DLR", "Road_DR", "Road_LR", "Road_UD", "Road_UDL", "Road_UDLR", "Road_UDR", "Road_UL", "Road_ULR", "Road_UR", "StartPuPu_LR", "StartPuPu_UD", "StartPupuRoro_LR", "StartPupuRoro_UD", "StartRoro_LR", "StartRoro_UD", "Treasure_LR", "Treasure_UD"
+      ,"Rail_DL","Rail_DR","Rail_LR","Rail_UD","Rail_UL","Rail_UR","RailBlue_DL","RailBlue_DR","RailBlue_LR","RailBlue_UD","RailBlue_UL","RailBlue_UR","RailGreen_DL","RailGreen_DR","RailGreen_LR","RailGreen_UD","RailGreen_UL","RailGreen_UR","RailRed_DL","RailRed_DR","RailRed_LR","RailRed_UD","RailRed_UL","RailRed_UR","RailSWBlue_LR","RailSWBlue_UD","RailSWGreen_LR","RailSWGreen_UD","RailSwRed_LR","RailSwRed_UD"
+    ];
+    const ITEM_GROUP = ["Apple", "Rock", "Wood", "UIMask"];
+    const BOSS_GROUP = ["Snake", "Snake2", "Crow", "Crow2", "UIMask"];
+    const ENEMY_GROUP = ["Silver", "Gold", "UIMask"];
+
+    let state = {
+        version: 1, MapTitle: "", hint: "", pupu_right: false, roro_Right: false,
+        useCommandsPupu: [], useCommandsRoro: [],
+        initialCommandsPupu: Array(5).fill("none"), initialCommandsRoro: Array(5).fill("none"),
+        GoldSnake: { ItemNum: 0 },
+        enemy1: [{command1:"none",command2:"none",command3:"none",command4:"none",command5:"none"}],
+        enemy2: [{command1:"none",command2:"none",command3:"none",command4:"none",command5:"none"}],
+        enemy3: [{command1:"none",command2:"none",command3:"none",command4:"none",command5:"none"}],
+        enemy4: [{command1:"none",command2:"none",command3:"none",command4:"none",command5:"none"}],
+        cells: []
+    };
+
+    let selectedSprite = "Empty1";
+
+    /**
+     * 画像パス生成ヘルパー (修正版)
+     */
+    function getImagePath(spriteName, ver) {
+        if (spriteName === "UIMask") {
+            // UIMaskは images/UIMask.png 固定
+            return `./images/UIMask.png`;
+        }
+        const prefix = "M" + ver;
+        // 例: ./M1/M1Apple_LR.png
+        return `./${prefix}/${prefix}${spriteName}.png`;
+    }
+
+    function init() {
+        state.cells = [];
+        for(let y=0; y<ROWS; y++) {
+            for(let x=0; x<COLS; x++) {
+                state.cells.push({
+                    cellName: `Sprite_${x}_${y}`, cellSpriteName: "Empty1",
+                    items: Array.from({length:4}, (_, i) => ({ itemName: `Item${i+1}`, spriteName: "UIMask" })),
+                    x: x, y: y
+                });
+            }
+        }
+        buildPalettes();
+        buildUI();
+        togglePalettes();
+        toggleCharSettings();
+        render();
+    }
+
+    function buildPalettes() {
+        const ver = parseInt(document.getElementById('ver').value);
+        const createElements = (containerId, list) => {
+            const container = document.getElementById(containerId);
+            container.innerHTML = "";
+            
+            list.forEach(s => {
+                if (containerId === 'mapPalette' && (ver === 1 || ver === 2) && HIDDEN_LIST.includes(s)) {
+                    return;
+                }
+
+                const div = document.createElement('div');
+                div.className = 'p-item' + (s === selectedSprite ? ' active' : '');
+                const thumb = document.createElement('div');
+                thumb.className = 'p-thumb';
+                thumb.style.backgroundImage = `url('${getImagePath(s, ver)}')`;
+                
+                const name = document.createElement('div');
+                name.innerText = s;
+                div.appendChild(thumb);
+                div.appendChild(name);
+                div.onclick = () => {
+                    selectedSprite = s;
+                    document.querySelectorAll('.p-item').forEach(el => el.classList.remove('active'));
+                    div.classList.add('active');
+                };
+                container.appendChild(div);
+            });
+        };
+        createElements('mapPalette', MAP_SPRITES);
+        createElements('itemPalette', ITEM_GROUP);
+        createElements('bossPalette', BOSS_GROUP);
+        createElements('enemyPalette', ENEMY_GROUP);
+    }
+
+    function togglePalettes() {
+        const layer = document.querySelector('input[name="layer"]:checked').value;
+        document.getElementById('mapPaletteSection').classList.toggle('hidden', layer !== 'map');
+        document.getElementById('itemPaletteSection').classList.toggle('hidden', layer !== 'item');
+    }
+
+    function toggleCharSettings() {
+        const char = document.querySelector('input[name="charLayer"]:checked').value;
+        document.getElementById('pupuSettings').classList.toggle('hidden', char !== 'pupu');
+        document.getElementById('roroSettings').classList.toggle('hidden', char !== 'roro');
+    }
+
+    function buildUI() {
+        ["Pupu", "Roro"].forEach(char => {
+            const cmdContainer = document.getElementById(`useCommands${char}`);
+            cmdContainer.innerHTML = "";
+            COMMAND_TYPES.filter(c => c !== "none").forEach(c => {
+                const lbl = document.createElement('label');
+                lbl.innerHTML = `<input type="checkbox" value="${c}" onchange="updateAll()"> ${c}`;
+                cmdContainer.appendChild(lbl);
+            });
+            const initContainer = document.getElementById(`initCommands${char}`);
+            initContainer.innerHTML = "";
+            for(let i=0; i<5; i++) {
+                const sel = document.createElement('select');
+                sel.id = `init${char}_${i}`;
+                sel.onchange = () => updateAll();
+                COMMAND_TYPES.forEach(ct => sel.add(new Option(ct, ct)));
+                initContainer.appendChild(sel);
+            }
+        });
+        const eConfig = document.getElementById('enemyConfigs');
+        eConfig.innerHTML = "";
+        for(let e=1; e<=4; e++) {
+            const div = document.createElement('div');
+            div.style.marginBottom = "8px";
+            div.innerHTML = `<span style="font-size:11px; color:#f1c40f;">${ENEMY_LABELS[e]}</span><br>`;
+            for(let c=1; c<=5; c++) {
+                const sel = document.createElement('select');
+                sel.id = `enemy${e}_cmd${c}`;
+                sel.style.width = "18%";
+                sel.onchange = () => updateAll();
+                COMMAND_TYPES.forEach(ct => sel.add(new Option(ct, ct)));
+                div.appendChild(sel);
+            }
+            eConfig.appendChild(div);
+        }
+    }
+
+    function render() {
+        const gridEl = document.getElementById('grid');
+        gridEl.innerHTML = "";
+        const ver = parseInt(document.getElementById('ver').value);
+
+        for (let y = ROWS - 1; y >= 0; y--) {
+            for (let x = 0; x < COLS; x++) {
+                const cell = state.cells.find(c => c.x === x && c.y === y);
+                const div = document.createElement('div');
+                div.className = 'cell';
+                div.style.backgroundImage = `url('${getImagePath(cell.cellSpriteName, ver)}')`;
+
+                let color = "";
+                if ((y === 9) || (x >= 5 && x <= 8 && y >= 0 && y <= 1)) color = "#e62200";
+                else if ((x >= 11 && x <= 13 && y >= 0 && y <= 8) || (x >= 8 && x <= 10 && y >= 0 && y <= 1)) color = "#ec9dd1";
+                else if ((x >= 0 && x <= 2 && y >= 0 && y <= 8) || (x >= 3 && x <= 5 && y >= 0 && y <= 1)) color = "#9dd3ec";
+                if(color) {
+                    const ov = document.createElement('div'); ov.className = 'cell-overlay';
+                    ov.style.backgroundColor = color; div.appendChild(ov);
+                }
+
+                const itemIcons = document.createElement('div');
+                itemIcons.className = 'item-icons';
+                cell.items.forEach(it => {
+                    const icon = document.createElement('div'); icon.className = 'item-mini';
+                    icon.style.backgroundImage = `url('${getImagePath(it.spriteName, ver)}')`;
+                    itemIcons.appendChild(icon);
+                });
+                div.appendChild(itemIcons);
+
+                const lbl = document.createElement('div'); lbl.className = 'cell-label'; lbl.innerText = `${x},${y}`; div.appendChild(lbl);
+
+                div.onclick = () => {
+                    const layer = document.querySelector('input[name="layer"]:checked').value;
+                    if(layer === 'map') cell.cellSpriteName = selectedSprite;
+                    else {
+                        if(selectedSprite === "UIMask") cell.items.forEach(i => i.spriteName = "UIMask");
+                        else {
+                            const slot = cell.items.find(i => i.spriteName === "UIMask");
+                            if(slot) slot.spriteName = selectedSprite;
+                        }
+                    }
+                    render();
+                };
+                gridEl.appendChild(div);
+            }
+        }
+    }
+
+    function updateAll() {
+        state.version = parseInt(document.getElementById('ver').value);
+        state.MapTitle = document.getElementById('mapTitle').value;
+        state.hint = document.getElementById('mapHint').value;
+        state.pupu_right = document.getElementById('pupu_right').checked;
+        state.roro_Right = document.getElementById('roro_Right').checked;
+        state.GoldSnake.ItemNum = parseInt(document.getElementById('goldSnakeItemNum').value);
+        ["Pupu", "Roro"].forEach(char => {
+            state[`useCommands${char}`] = Array.from(document.querySelectorAll(`#useCommands${char} input:checked`)).map(i => i.value);
+            for(let i=0; i<5; i++) state[`initialCommands${char}`][i] = document.getElementById(`init${char}_${i}`).value;
+        });
+        for(let e=1; e<=4; e++) {
+            for(let c=1; c<=5; c++) state[`enemy${e}`][0][`command${c}`] = document.getElementById(`enemy${e}_cmd${c}`).value;
+        }
+        buildPalettes();
+        render();
+    }
+
+    function downloadJSON() {
+        const prefix = "M" + state.version;
+        const output = JSON.parse(JSON.stringify(state));
+        output.cells.forEach(c => {
+            c.cellSpriteName = prefix + c.cellSpriteName;
+            c.items.forEach(it => it.spriteName = (it.spriteName === "UIMask" ? "UIMask" : prefix + it.spriteName));
+            delete c.x; delete c.y;
+        });
+        const blob = new Blob([JSON.stringify(output, null, 2)], {type: 'application/json'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = "Map01.json"; a.click();
+    }
+
+    function loadJSON(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const json = JSON.parse(e.target.result);
+            const prefix = "M" + json.version;
+            document.getElementById('ver').value = json.version;
+            document.getElementById('mapTitle').value = json.MapTitle || "";
+            document.getElementById('mapHint').value = json.hint || "";
+            document.getElementById('pupu_right').checked = json.pupu_right || false;
+            document.getElementById('roro_Right').checked = json.roro_Right || false;
+            document.getElementById('goldSnakeItemNum').value = (json.GoldSnake && json.GoldSnake.ItemNum) ? json.GoldSnake.ItemNum : 0;
+            
+            ["Pupu", "Roro"].forEach(char => {
+                const used = json[`useCommands${char}`] || [];
+                document.querySelectorAll(`#useCommands${char} input`).forEach(i => i.checked = used.includes(i.value));
+                const init = json[`initialCommands${char}`] || Array(5).fill("none");
+                for(let i=0; i<5; i++) document.getElementById(`init${char}_${i}`).value = init[i];
+            });
+            for(let e=1; e<=4; e++) {
+                const eData = (json[`enemy${e}`] && json[`enemy${e}`][0]) ? json[`enemy${e}`][0] : {};
+                for(let c=1; c<=5; c++) document.getElementById(`enemy${e}_cmd${c}`).value = eData[`command${c}`] || "none";
+            }
+
+            json.cells.forEach(jc => {
+                const parts = jc.cellName.split('_');
+                const cell = state.cells.find(c => c.x == parts[1] && c.y == parts[2]);
+                if(cell) {
+                    cell.cellSpriteName = jc.cellSpriteName.replace(prefix, "");
+                    jc.items.forEach((jit, i) => cell.items[i].spriteName = jit.spriteName === "UIMask" ? "UIMask" : jit.spriteName.replace(prefix, ""));
+                }
+            });
+            updateAll();
+        };
+        reader.readAsText(file);
+    }
+    
+    window.onload = init;
+</script>
+</body>
+</html>
