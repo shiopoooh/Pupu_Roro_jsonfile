@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Unity Map Editor V3.2 (Path Updated)</title>
+    <title>Unity Map Editor V3.2 (Final Path Update)</title>
     <style>
         :root {
             --bg-color: #2c3e50;
@@ -142,7 +142,6 @@
       "RailSWBlue_LR","RailSWBlue_UD","RailSWGreen_LR","RailSWGreen_UD","RailSwRed_LR","RailSwRed_UD"
     ];
 
-    // エネミーの表示用ラベル
     const ENEMY_LABELS = {
         1: "１ヘビ",
         2: "２カラス",
@@ -172,15 +171,16 @@
     let selectedSprite = "Empty1";
 
     /**
-     * 画像パス生成ヘルパー
+     * 画像パス生成ヘルパー (修正版)
      */
     function getImagePath(spriteName, ver) {
         if (spriteName === "UIMask") {
+            // UIMaskは images/UIMask.png 固定
             return `./images/UIMask.png`;
         }
         const prefix = "M" + ver;
-        // 修正後案2： images/M1/M1Apple_LR.png の形式
-        return `./images/${prefix}/${prefix}${spriteName}.png`;
+        // 例: ./M1/M1Apple_LR.png
+        return `./${prefix}/${prefix}${spriteName}.png`;
     }
 
     function init() {
@@ -208,7 +208,6 @@
             container.innerHTML = "";
             
             list.forEach(s => {
-                // ワールド1,2の場合はレール関連スプライトを表示しない
                 if (containerId === 'mapPalette' && (ver === 1 || ver === 2) && HIDDEN_LIST.includes(s)) {
                     return;
                 }
@@ -217,8 +216,6 @@
                 div.className = 'p-item' + (s === selectedSprite ? ' active' : '');
                 const thumb = document.createElement('div');
                 thumb.className = 'p-thumb';
-                
-                // パス修正を反映
                 thumb.style.backgroundImage = `url('${getImagePath(s, ver)}')`;
                 
                 const name = document.createElement('div');
@@ -298,8 +295,6 @@
                 const cell = state.cells.find(c => c.x === x && c.y === y);
                 const div = document.createElement('div');
                 div.className = 'cell';
-                
-                // セルの画像パス修正
                 div.style.backgroundImage = `url('${getImagePath(cell.cellSpriteName, ver)}')`;
 
                 let color = "";
@@ -315,7 +310,6 @@
                 itemIcons.className = 'item-icons';
                 cell.items.forEach(it => {
                     const icon = document.createElement('div'); icon.className = 'item-mini';
-                    // UIMaskも表示するように修正
                     icon.style.backgroundImage = `url('${getImagePath(it.spriteName, ver)}')`;
                     itemIcons.appendChild(icon);
                 });
@@ -362,7 +356,6 @@
         const prefix = "M" + state.version;
         const output = JSON.parse(JSON.stringify(state));
         output.cells.forEach(c => {
-            // JSON内の形式は維持 (例: M1Apple_LR)
             c.cellSpriteName = prefix + c.cellSpriteName;
             c.items.forEach(it => it.spriteName = (it.spriteName === "UIMask" ? "UIMask" : prefix + it.spriteName));
             delete c.x; delete c.y;
@@ -401,7 +394,6 @@
                 const parts = jc.cellName.split('_');
                 const cell = state.cells.find(c => c.x == parts[1] && c.y == parts[2]);
                 if(cell) {
-                    // 内部状態ではプレフィックスなしで管理
                     cell.cellSpriteName = jc.cellSpriteName.replace(prefix, "");
                     jc.items.forEach((jit, i) => cell.items[i].spriteName = jit.spriteName === "UIMask" ? "UIMask" : jit.spriteName.replace(prefix, ""));
                 }
